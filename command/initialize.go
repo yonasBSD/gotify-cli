@@ -44,7 +44,13 @@ func doInit(ctx *cli.Context) {
 		DefaultPriority: defaultPriority,
 	}
 
-	pathToWrite, err := config.ExistingConfig(config.GetLocations())
+	var pathToWrite string
+	var ok bool
+	var err error
+	pathToWrite, ok = os.LookupEnv("GOTIFY_CONFIG")
+	if !ok {
+		pathToWrite, err = config.ExistingConfig(config.GetLocations())
+	}
 
 	var writeErr error
 	if err == config.ErrNoneSet {
@@ -98,6 +104,16 @@ func inputString(text string) string {
 }
 
 func inputToken(gotify *api.GotifyREST) string {
+	_, ok := os.LookupEnv("GOTIFY_TOKEN")
+	if ok {
+		return inputRawToken(gotify)
+	}
+
+	_, ok = os.LookupEnv("GOTIFY_USERNAME")
+	if ok {
+		return inputCredentialsAndCreateToken(gotify)
+	}
+
 	for {
 		fmt.Println("Configure an application token")
 		fmt.Println("1. Enter an application-token")
@@ -115,11 +131,30 @@ func inputToken(gotify *api.GotifyREST) string {
 }
 
 func inputCredentialsAndCreateToken(gotify *api.GotifyREST) string {
-	for {
+	var username string
+	username, ok := os.LookupEnv("GOTIFY_USERNAME")
+	if !ok {
 		fmt.Println("Enter Credentials (only used for creating the token not saved afterwards)")
-		username := inputString("Username: ")
+		username = inputString("Username: ")
+	}
+
+	var password string
+	password, ok = os.LookupEnv("GOTIFY_PASSWORD")
+	if !ok {
 		fmt.Print("Password: ")
-		password := readPassword()
+		password = readPassword()
+	}
+
+	var c int
+	for {
+		if c > 0 {
+			fmt.Println("Enter Credentials (only used for creating the token not saved afterwards)")
+			username = inputString("Username: ")
+			fmt.Print("Password: ")
+			password = readPassword()
+		}
+		c = c + 1
+
 		basicAuth := auth.BasicAuth(username, password)
 		_, err := utils.SpinLoader("Authenticating", func(success chan interface{}, failure chan error) {
 			user, err := gotify.User.CurrentUser(nil, basicAuth)
@@ -147,13 +182,31 @@ func readPassword() string {
 }
 
 func createToken(gotify *api.GotifyREST, auth apiruntime.ClientAuthInfoWriter) string {
+	var name string
+	name, ok := os.LookupEnv("GOTIFY_APP_NAME")
+	if !ok {
+		name = inputString("Application name: ")
+	}
+
+	var description string
+	description, ok = os.LookupEnv("GOTIFY_APP_DESC")
+	if !ok {
+		description = inputString("Application description (can be empty): ")
+	}
+
+	var c int
 	for {
-		name := inputString("Application name: ")
-		if name == "" {
-			erred("Name may not be empty")
-			continue
+		if c > 0 {
+			name = inputString("Application name: ")
+
+			if name == "" {
+				erred("Name may not be empty")
+				continue
+			}
+
+			description = inputString("Application description (can be empty): ")
 		}
-		description := inputString("Application description (can be empty): ")
+		c = c + 1
 
 		resp, err := utils.SpinLoader("Creating", func(success chan interface{}, failure chan error) {
 			params := application.NewCreateAppParams()
@@ -175,8 +228,18 @@ func createToken(gotify *api.GotifyREST, auth apiruntime.ClientAuthInfoWriter) s
 }
 
 func inputRawToken(gotify *api.GotifyREST) string {
+	var enteredToken string
+	enteredToken, ok := os.LookupEnv("GOTIFY_TOKEN")
+	if !ok {
+		enteredToken = inputString("Application Token: ")
+	}
+
+	var c int
 	for {
-		enteredToken := inputString("Application Token: ")
+		if c > 0 {
+			enteredToken = inputString("Application Token: ")
+		}
+		c = c + 1
 
 		if len(enteredToken) != 15 {
 			fmt.Println("A application token must have a length of 15 characters")
@@ -208,8 +271,19 @@ func inputRawToken(gotify *api.GotifyREST) string {
 }
 
 func inputDefaultPriority() int {
+	var defaultPriorityStr string
+	defaultPriorityStr, ok := os.LookupEnv("GOTIFY_PRIORITY")
+	if !ok {
+		defaultPriorityStr = inputString("Default Priority [0-10]: ")
+	}
+
+	var c int
 	for {
-		defaultPriorityStr := inputString("Default Priority [0-10]: ")
+		if c > 0 {
+			defaultPriorityStr = inputString("Default Priority [0-10]: ")
+		}
+		c = c + 1
+
 		defaultPriority, err := strconv.Atoi(defaultPriorityStr)
 		if err != nil || (defaultPriority > 10 || defaultPriority < 0) {
 			erred("Priority needs to be a number between 0 and 10.")
@@ -222,8 +296,18 @@ func inputDefaultPriority() int {
 }
 
 func inputServerURL() *url.URL {
+	var rawURL string
+	rawURL, ok := os.LookupEnv("GOTIFY_URL")
+	if !ok {
+		rawURL = inputString("Gotify URL: ")
+	}
+
+	var c int
 	for {
-		rawURL := inputString("Gotify URL: ")
+		if c > 0 {
+			rawURL = inputString("Gotify URL: ")
+		}
+		c = c + 1
 		parsedURL, err := url.Parse(rawURL)
 		if err != nil {
 			erred("Could not parse URL:", err)
